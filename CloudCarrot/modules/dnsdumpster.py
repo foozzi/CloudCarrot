@@ -95,7 +95,7 @@ class DNSDumpsterAPI:
         soup = BeautifulSoup(r.text, 'html.parser')
         main_tables = soup.findAll('table')
 
-        self.data['host'] = self.host
+        #self.data['host'] = self.host
         self.data['records'] = {}
         self.data['records']['dns'] = self._receive_data_from_table(
             main_tables[0])
@@ -106,5 +106,12 @@ class DNSDumpsterAPI:
         self.data['records']['hosts'] = self._receive_data_from_table(
             main_tables[3])
 
-        return self.data
+        try:
+            tmp_url = 'https://dnsdumpster.com/static/map/{}.png'.format(self.host)
+            image_data = base64.b64encode(self.session.get(tmp_url).content)
+        except:
+            self.data['image_data'] = None
+        finally:
+            self.data['image_data'] = image_data
 
+        return self.data 
