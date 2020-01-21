@@ -5,17 +5,22 @@ import re
 import base64
 
 _URL = "https://dnsdumpster.com/"
+_API_KEY_IMAGE_HOSTING = 'cc88f7f179186ec599daf4227123e522'
+
 
 class Error(Exception):
     pass
+
 
 class IncorrectHostError(Error):
     """Error in host name or domain"""
     pass
 
+
 class ApiLimitError(Error):
     """Rate limit dnsdumpster"""
     pass
+
 
 class DNSDumpsterAPI:
 
@@ -26,7 +31,8 @@ class DNSDumpsterAPI:
 
         self.data = {}
 
-        self._receive_middleware()
+        if not self._receive_middleware():
+            return None
 
     def _receive_middleware(self):
         r = self.session.get(_URL)
@@ -35,7 +41,7 @@ class DNSDumpsterAPI:
             csrf_middleware = soup.findAll(
                 'input', attrs={'name': 'csrfmiddlewaretoken'})[0]['value']
         except IndexError:
-            raise exceptions.MiddlewareError('Middleware token is not found')
+            return False
 
         self.token = csrf_middleware.strip()
 
@@ -73,7 +79,7 @@ class DNSDumpsterAPI:
                     [domain, ip, reverse_dns, autonomous_system, provider, country])
 
                 res.append(data)
-            except:
+            except Exception:
                 """pass if we don't have some table with info about host"""
                 pass
         return res
@@ -86,7 +92,7 @@ class DNSDumpsterAPI:
                               data=data, headers=headers)
         if r.status_code != 200:
             r.raise_for_status()
-        
+
         if 'There was an error getting results' in r.text:
             return False
         if 'Too many requests from your IP address' in r.text:
@@ -95,7 +101,6 @@ class DNSDumpsterAPI:
         soup = BeautifulSoup(r.text, 'html.parser')
         main_tables = soup.findAll('table')
 
-        #self.data['host'] = self.host
         self.data['records'] = {}
         self.data['records']['dns'] = self._receive_data_from_table(
             main_tables[0])
@@ -107,11 +112,18 @@ class DNSDumpsterAPI:
             main_tables[3])
 
         try:
-            tmp_url = 'https://dnsdumpster.com/static/map/{}.png'.format(self.host)
-            image_data = base64.b64encode(self.session.get(tmp_url).content)
-        except:
-            self.data['image_data'] = None
+            tmp_url = 'https://dnsdumpster.com/static/map/{}.png'.format(
+                self.host)
+            image_data = self.session.get(tmp_url)
+            if image_data.status_code == 200:
+                r = requests.post(
+                    'https://api.imgbb.com/1/upload?key={}'.format(
+                        _API_KEY_IMAGE_HOSTING),
+                    data={'image': tmp_url})
+                if r.status_code == 200:
+                    self.data['image_data'] = r.json()['data']['url']
         finally:
-            self.data['image_data'] = image_data
+            if 'image_data' not in self.data:
+                self.data['image_data'] = None
 
-        return self.data 
+        return self.data
