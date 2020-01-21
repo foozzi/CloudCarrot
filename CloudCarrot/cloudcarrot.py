@@ -115,9 +115,9 @@ class CloudCarrot:
                 'We skip censys search.',
                 'red', 'on_grey')
 
-        if not censys_data is None and not censys_data:
+        if censys_data is not None and censys_data is not False:
             self.found_host.update(censys_data)
-        if not shodan_data is None and not shodan_data:
+        if shodan_data is not None and shodan_data is not False:
             self.found_host.update(shodan_data)
 
         if 'hosts' in dnsdumpster_data['records']:
@@ -189,5 +189,3 @@ class CloudCarrot:
                     self.open_port_hosts[host][port]['is_open'] = True
                 else:
                     self.open_port_hosts[host][port]['is_open'] = False
-
-
