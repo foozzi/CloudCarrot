@@ -7,9 +7,9 @@ from bs4 import BeautifulSoup
 from termcolor import cprint
 from tabulate import tabulate
 import emoji
-from .modules.dnsdumpster import DNSDumpsterAPI
-from .modules.censys import censys_search_certs
-from .modules.shodan import shodan_search
+from .modules.dnsdumpster_module import DNSDumpsterAPI
+from .modules.censys_module import censys_search_certs
+from .modules.shodan_module import shodan_search
 
 _ports = ['443', '80', '21', '22']
 _headers = {
@@ -30,7 +30,7 @@ class bcolors:
 class CloudCarrot:
     def __init__(self, domain):
         self.domain = domain
-        self.scrap_title = None
+        #self.scrap_title = None
         self.found_host = set()
         self.found_domain = set()
         self.dnsdumpster_graph = None
@@ -44,38 +44,38 @@ class CloudCarrot:
                    'red', 'on_grey', attrs=['bold'])
             sys.exit(0)
 
-        cprint('Trying scraping host with bypass WAF: {}'.format(
-            self.domain), 'green', 'on_grey', attrs=['bold'])
+        # cprint('Trying scraping host with bypass WAF: {}'.format(
+        #    self.domain), 'green', 'on_grey', attrs=['bold'])
 
-        try:
-            scraper = cfscrape.create_scraper()
-            cf_scap_data = scraper.get(
-                'http://{}'.format(self.domain), headers=_headers, timeout=15)
-        except requests.exceptions.MissingSchema:
-            cprint('Enter a valid domain or host. ex. - "site.com"',
-                   'red', 'on_grey', attrs=['bold'])
-            sys.exit(0)
-        except OSError:
-            cprint(
-                'Missing Node.js runtime. Node is required '
-                'and must be in the PATH (check with `node -v`).'
-                'Your Node binary may be called `nodejs` rather than `node`,'
-                'in which case you may need to run `apt-get install nodejs-legacy`'
-                'on some Debian-based systems.'
-                '(Please read the cfscrape README\'s Dependencies section: https://github.com/Anorov/cloudflare-scrape#dependencies.'
-                'red', 'on_grey', attrs=['bold'])
-            sys.exit(0)
+        # try:
+        #    scraper = cfscrape.create_scraper()
+        #    cf_scap_data = scraper.get(
+        #        'http://{}'.format(self.domain), headers=_headers, timeout=15)
+        # except requests.exceptions.MissingSchema:
+        #    cprint('Enter a valid domain or host. ex. - "site.com"',
+        #           'red', 'on_grey', attrs=['bold'])
+        #    sys.exit(0)
+        # except OSError:
+        #    cprint(
+        #        'Missing Node.js runtime. Node is required '
+        #        'and must be in the PATH (check with `node -v`).'
+        #        'Your Node binary may be called `nodejs` rather than `node`,'
+        #        'in which case you may need to run `apt-get install nodejs-legacy`'
+        #        'on some Debian-based systems.'
+        #        '(Please read the cfscrape README\'s Dependencies section: https://github.com/Anorov/cloudflare-scrape#dependencies.'
+        #        'red', 'on_grey', attrs=['bold'])
+        #    sys.exit(0)
 
-        if cf_scap_data.status_code == 200:
-            soup = BeautifulSoup(cf_scap_data.text, 'html.parser')
-            for title in soup.title:
-                self.scrap_title = title
-                break
-        else:
-            cprint('We have problem with url or connection,'
-                   'check your proxy or VPN connection for blocking.',
-                   'red', 'on_grey', attrs=['bold'])
-            sys.exit(0)
+        # if cf_scap_data.status_code == 200:
+        #    soup = BeautifulSoup(cf_scap_data.text, 'html.parser')
+        #    for title in soup.title:
+        #        self.scrap_title = title
+        #        break
+        # else:
+        #    cprint('We have problem with url or connection,'
+        #           'check your proxy or VPN connection for blocking.',
+        #           'red', 'on_grey', attrs=['bold'])
+        #    sys.exit(0)
 
     def search(self):
         cprint('Trying get data from DNSDumpster.',
@@ -104,25 +104,27 @@ class CloudCarrot:
                 'red', 'on_grey')
 
         """Search with Shodan"""
-        cprint('Trying get data from Shodan.',
-               'green', 'on_grey', attrs=['bold'])
-        shodan_data = shodan_search(self.scrap_title)
-        if shodan_data is False:
-            cprint(
-                'Shodan return error, maybe you'
-                'exceeded api limit or another error.\n'
-                'Check your `settings.conf`\n'
-                'We skip censys search.',
-                'red', 'on_grey')
+        # cprint('Trying get data from Shodan.',
+        #       'green', 'on_grey', attrs=['bold'])
+        #shodan_data = shodan_search(self.domain)
+        # if shodan_data is False:
+        #    cprint(
+        #        'Shodan return error, maybe you'
+        #        'exceeded api limit or another error.\n'
+        #        'Check your `settings.conf`\n'
+        #        'We skip censys search.',
+        #        'red', 'on_grey')
 
         if censys_data is not None and censys_data is not False:
-            self.found_host.update(censys_data)
-        if shodan_data is not None and shodan_data is not False:
-            self.found_host.update(shodan_data)
+            self.found_host.update(
+                host for host in censys_data if self._check_cloudflare(host))
+        # if shodan_data is not None and shodan_data is not False:
+        #    self.found_host.update(
+        #        host for host in censys_data if self._check_cloudflare(host))
 
         if 'hosts' in dnsdumpster_data['records']:
             self.found_host.update(data_host['ip'] for data_host in dnsdumpster_data['records']
-                                   ['hosts'] if data_host['ip'] not in self.found_host)
+                                   ['hosts'] if self._check_cloudflare(data_host['ip']))
             """subdomains from dnsdumpster"""
             self.found_domain.update(
                 data_host['domain'] for data_host in dnsdumpster_data['records']['hosts'])
@@ -162,6 +164,35 @@ class CloudCarrot:
             if not self.dnsdumpster_graph is None:
                 cprint('Mapping the domain from dnsdumpster: {}'.format(
                     self.dnsdumpster_graph), 'green', 'on_grey', attrs=['bold'])
+
+    def _check_cloudflare(self, ip):
+        http = True
+        https = True
+        try:
+            r = requests.get('http://{}'.format(ip),
+                             verify=False, headers=_headers)
+        except requests.exceptions.ConnectionError:
+            http = False
+            pass
+
+        if not http:
+            try:
+                r = requests.get('https://{}'.format(ip),
+                                 verify=False, headers=_headers)
+            except requests.exceptions.ConnectionError:
+                https = False
+                pass
+
+        if http or https:
+            soup = BeautifulSoup(r.text, 'html.parser')
+            for title in soup.title:
+                m = re.findall('Cloudflare', title)
+                if len(m):
+                    return False
+                if 'Server' in r.headers:
+                    if r.headers['Server'] == 'cloudflare':
+                        return False
+                return True
 
     def _check_ports(self, host, port):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

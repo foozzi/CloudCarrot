@@ -48,9 +48,6 @@ class DNSDumpsterAPI:
     def _receive_data_from_table(self, table):
         res = []
         trs = table.findAll('tr')
-        self.headers = ["Domain", "IP", "Reverse dns",
-                        "AS", "Provider", "Country"]
-        self.table_cli = []
         for tr in trs:
             tds = tr.findAll('td')
             pattern_ip = r'([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})'
@@ -73,10 +70,6 @@ class DNSDumpsterAPI:
                         'provider': provider,
                         'country': country,
                         'header': header}
-
-                """Generate pretty table"""
-                self.table_cli.append(
-                    [domain, ip, reverse_dns, autonomous_system, provider, country])
 
                 res.append(data)
             except Exception:
