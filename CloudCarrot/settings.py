@@ -1,1 +1,2 @@
-__version__ = '0.1b2'
+__version__ = '0.1b3'
+__config_file__ = 'cloudcarrot'

@@ -1,11 +1,11 @@
 import re
 import sys
-import cfscrape
 import requests
 import socket
 from bs4 import BeautifulSoup
 from termcolor import cprint
 from tabulate import tabulate
+from pathlib import Path
 import emoji
 from .modules.dnsdumpster_module import DNSDumpsterAPI
 from .modules.censys_module import censys_search_certs
@@ -28,13 +28,13 @@ class bcolors:
 
 
 class CloudCarrot:
-    def __init__(self, domain):
+    def __init__(self, domain, check_open_ports=False):
         self.domain = domain
-        #self.scrap_title = None
         self.found_host = set()
         self.found_domain = set()
         self.dnsdumpster_graph = None
         self.open_port_hosts = {}
+        self.check_open_ports = check_open_ports
 
         m = re.match(
             r"^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$", self.domain)
@@ -43,39 +43,6 @@ class CloudCarrot:
             cprint('Enter a valid domain or host. ex. - "site.com"',
                    'red', 'on_grey', attrs=['bold'])
             sys.exit(0)
-
-        # cprint('Trying scraping host with bypass WAF: {}'.format(
-        #    self.domain), 'green', 'on_grey', attrs=['bold'])
-
-        # try:
-        #    scraper = cfscrape.create_scraper()
-        #    cf_scap_data = scraper.get(
-        #        'http://{}'.format(self.domain), headers=_headers, timeout=15)
-        # except requests.exceptions.MissingSchema:
-        #    cprint('Enter a valid domain or host. ex. - "site.com"',
-        #           'red', 'on_grey', attrs=['bold'])
-        #    sys.exit(0)
-        # except OSError:
-        #    cprint(
-        #        'Missing Node.js runtime. Node is required '
-        #        'and must be in the PATH (check with `node -v`).'
-        #        'Your Node binary may be called `nodejs` rather than `node`,'
-        #        'in which case you may need to run `apt-get install nodejs-legacy`'
-        #        'on some Debian-based systems.'
-        #        '(Please read the cfscrape README\'s Dependencies section: https://github.com/Anorov/cloudflare-scrape#dependencies.'
-        #        'red', 'on_grey', attrs=['bold'])
-        #    sys.exit(0)
-
-        # if cf_scap_data.status_code == 200:
-        #    soup = BeautifulSoup(cf_scap_data.text, 'html.parser')
-        #    for title in soup.title:
-        #        self.scrap_title = title
-        #        break
-        # else:
-        #    cprint('We have problem with url or connection,'
-        #           'check your proxy or VPN connection for blocking.',
-        #           'red', 'on_grey', attrs=['bold'])
-        #    sys.exit(0)
 
     def search(self):
         cprint('Trying get data from DNSDumpster.',
@@ -104,23 +71,23 @@ class CloudCarrot:
                 'red', 'on_grey')
 
         """Search with Shodan"""
-        # cprint('Trying get data from Shodan.',
-        #       'green', 'on_grey', attrs=['bold'])
-        #shodan_data = shodan_search(self.domain)
-        # if shodan_data is False:
-        #    cprint(
-        #        'Shodan return error, maybe you'
-        #        'exceeded api limit or another error.\n'
-        #        'Check your `settings.conf`\n'
-        #        'We skip censys search.',
-        #        'red', 'on_grey')
+        cprint('Trying get data from Shodan.',
+               'green', 'on_grey', attrs=['bold'])
+        shodan_data = shodan_search(self.domain)
+        if shodan_data is False:
+            cprint(
+                'Shodan return error, maybe you'
+                'exceeded api limit or another error.\n'
+                'Check your `settings.conf`\n'
+                'We skip censys search.',
+                'red', 'on_grey')
 
         if censys_data is not None and censys_data is not False:
             self.found_host.update(
                 host for host in censys_data if self._check_cloudflare(host))
-        # if shodan_data is not None and shodan_data is not False:
-        #    self.found_host.update(
-        #        host for host in censys_data if self._check_cloudflare(host))
+        if shodan_data is not None and shodan_data is not False:
+            self.found_host.update(
+                host for host in shodan_data if self._check_cloudflare(host))
 
         if 'hosts' in dnsdumpster_data['records']:
             self.found_host.update(data_host['ip'] for data_host in dnsdumpster_data['records']
@@ -130,6 +97,7 @@ class CloudCarrot:
                 data_host['domain'] for data_host in dnsdumpster_data['records']['hosts'])
 
         self.found_host = list(set(self.found_host))
+
         if len(self.found_host) < 1:
             self.found_host = False
             cprint('We tried but didn’t find any hosts...')
@@ -138,21 +106,26 @@ class CloudCarrot:
             cprint('We tried but didn’t find any domains...')
 
         if self.found_host:
-            self._check_hosts()
+            if self.check_open_ports:
+                self._check_hosts()
 
-            table_headers = ['{} Hosts {}'.format(
-                bcolors.OKBLUE, bcolors.ENDC)] + [bcolors.OKBLUE + port + bcolors.ENDC for port in _ports]
-            table_data = []
-            for h in self.open_port_hosts:
-                table_data.append([
-                    h,
-                    emoji.emojize(':carrot:') if self.open_port_hosts[h]['443']['is_open'] is True else emoji.emojize(
-                        ':no_entry:'),
-                    emoji.emojize(':carrot:') if self.open_port_hosts[h]['80']['is_open'] is True else emoji.emojize(
-                        ':no_entry:'),
-                    emoji.emojize(':carrot:') if self.open_port_hosts[h]['21']['is_open'] is True else emoji.emojize(
-                        ':no_entry:'),
-                    emoji.emojize(':carrot:') if self.open_port_hosts[h]['22']['is_open'] is True else emoji.emojize(':no_entry:')])
+                table_headers = ['{} Hosts {}'.format(
+                    bcolors.OKBLUE, bcolors.ENDC)] + [bcolors.OKBLUE + port + bcolors.ENDC for port in _ports]
+                table_data = []
+                for h in self.open_port_hosts:
+                    table_data.append([
+                        h,
+                        emoji.emojize(':carrot:') if self.open_port_hosts[h]['443']['is_open'] is True else emoji.emojize(
+                            ':no_entry:'),
+                        emoji.emojize(':carrot:') if self.open_port_hosts[h]['80']['is_open'] is True else emoji.emojize(
+                            ':no_entry:'),
+                        emoji.emojize(':carrot:') if self.open_port_hosts[h]['21']['is_open'] is True else emoji.emojize(
+                            ':no_entry:'),
+                        emoji.emojize(':carrot:') if self.open_port_hosts[h]['22']['is_open'] is True else emoji.emojize(':no_entry:')])
+            else:
+                table_headers = ['{} Hosts{} '.format(
+                    bcolors.OKBLUE, bcolors.ENDC)]
+                table_data = [[host] for host in self.found_host]
 
         """print table with hosts and port info"""
         print(tabulate(table_data, table_headers, tablefmt="github") + '\n')
@@ -170,29 +143,40 @@ class CloudCarrot:
         https = True
         try:
             r = requests.get('http://{}'.format(ip),
-                             verify=False, headers=_headers)
+                             verify=False, headers=_headers, timeout=10)
         except requests.exceptions.ConnectionError:
+            http = False
+            pass
+        except requests.exceptions.Timeout:
             http = False
             pass
 
         if not http:
             try:
                 r = requests.get('https://{}'.format(ip),
-                                 verify=False, headers=_headers)
+                                 verify=False, headers=_headers, timeout=10)
             except requests.exceptions.ConnectionError:
+                https = False
+                pass
+            except requests.exceptions.Timeout:
                 https = False
                 pass
 
         if http or https:
             soup = BeautifulSoup(r.text, 'html.parser')
-            for title in soup.title:
-                m = re.findall('Cloudflare', title)
-                if len(m):
-                    return False
-                if 'Server' in r.headers:
-                    if r.headers['Server'] == 'cloudflare':
+            if soup.title:
+                for title in soup.title:
+                    m = re.findall('Cloudflare', title)
+                    if len(m):
                         return False
-                return True
+                    if 'Server' in r.headers:
+                        if r.headers['Server'] == 'cloudflare':
+                            return False
+                    return True
+            """if we could not get headers"""
+            return True
+        """if the host is not responding"""
+        return True
 
     def _check_ports(self, host, port):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

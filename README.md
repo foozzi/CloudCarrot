@@ -4,8 +4,8 @@
 
 ### What need for 0.1 version
 
- - add detecting OS
- - add create config file on different OS
+ - ~~add detecting OS~~
+ - ~~add create config file on different OS~~ Windows support coming soon
  - add tests
  - ~~fix infinity scraping website with aggresive-mode **WAF** (*CloudFlare*)~~
  - ~~add check cloudflare block-page~~

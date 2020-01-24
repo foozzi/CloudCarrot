@@ -3,10 +3,13 @@ import sys
 import censys.ipv4
 from pathlib import Path
 import configparser
+import os
+from CloudCarrot.settings import __config_file__
 
 config = configparser.ConfigParser()
 try:
-    config.read(Path("settings.conf").absolute())
+    config.read(os.path.join(str(Path.home()),
+                             '.config/{}'.format(__config_file__)))
     SECRET = config.get('censys', 'SECRET')
     API_ID = config.get('censys', 'API_ID')
 except configparser.NoSectionError:
