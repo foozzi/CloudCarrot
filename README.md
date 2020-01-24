@@ -11,6 +11,8 @@
  - ~~add check cloudflare block-page~~
  - ~~add search host in censys~~
  - add tor support
+ - add more methods for search
+ - fix known bugs
  - :carrot:
 
 ### Know bugs

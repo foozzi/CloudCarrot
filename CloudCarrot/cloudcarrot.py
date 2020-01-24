@@ -28,13 +28,14 @@ class bcolors:
 
 
 class CloudCarrot:
-    def __init__(self, domain, check_open_ports=False):
+    def __init__(self, domain, check_open_ports=False, tor=False):
         self.domain = domain
         self.found_host = set()
         self.found_domain = set()
         self.dnsdumpster_graph = None
         self.open_port_hosts = {}
         self.check_open_ports = check_open_ports
+        self.is_tor = tor
 
         m = re.match(
             r"^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$", self.domain)
@@ -43,6 +44,10 @@ class CloudCarrot:
             cprint('Enter a valid domain or host. ex. - "site.com"',
                    'red', 'on_grey', attrs=['bold'])
             sys.exit(0)
+
+    @property
+    def tor(self):
+        return 'socks5://127.0.0.1:9050'
 
     def search(self):
         cprint('Trying get data from DNSDumpster.',
@@ -127,8 +132,8 @@ class CloudCarrot:
                     bcolors.OKBLUE, bcolors.ENDC)]
                 table_data = [[host] for host in self.found_host]
 
-        """print table with hosts and port info"""
-        print(tabulate(table_data, table_headers, tablefmt="github") + '\n')
+            """print table with hosts and port info"""
+            print(tabulate(table_data, table_headers, tablefmt="github") + '\n')
 
         if self.found_domain:
             """print find domains and graph image link"""
